@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+yarn.lock
+package-lock.json
+pnpm-lock.yaml
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+*.tsbuildinfo
+
+# IDE and editor files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+debug.log
+*.log
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Cursor IDE specific
+.cursor/temp/
+.cursor/logs/
+!.cursor/rules/
+
+# Misc
+.cache/
+.temp/
+*.bak
+*.tmp
+*~

@@ -1,0 +1,132 @@
+---
+description: Ensures proper setup of community project files and 
+globs: 
+---
+# Community Projects Rule
+Standards for initializing and maintaining community-focused open source projects.
+
+<rule>
+name: community_projects
+description: Ensures proper setup of community project files and documentation
+filters:
+  - type: event
+    pattern: "project_init|project_validate"
+  - type: directory
+    pattern: ".*"
+
+actions:
+  - type: validate
+    description: "Validate required community files"
+    requirements:
+      - name: "README.md"
+        required: true
+        content:
+          - "Project title and description"
+          - "Installation instructions"
+          - "Usage examples"
+          - "Contributing guidelines reference"
+          - "License reference"
+      - name: "CONTRIBUTING.md"
+        required: true
+        content:
+          - "How to contribute"
+          - "Development setup"
+          - "Pull request process"
+          - "Code style guidelines"
+          - "Testing requirements"
+      - name: "LICENSE"
+        required: true
+        content:
+          - "Valid open source license text"
+          - "Current year"
+          - "Copyright holder information"
+      - name: "CODE_OF_CONDUCT.md"
+        required: true
+        content:
+          - "Expected behavior"
+          - "Unacceptable behavior"
+          - "Reporting process"
+          - "Enforcement guidelines"
+          - "Contact information"
+
+  - type: suggest
+    message: |
+      When setting up a community project, ensure:
+
+      1. README.md contains:
+         ```markdown
+         # Project Name
+
+         Brief description of the project.
+
+         ## Installation
+
+         Step-by-step installation instructions.
+
+         ## Usage
+
+         Basic usage examples.
+
+         ## Contributing
+
+         Please read [CONTRIBUTING.md](mdc:CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+
+         ## License
+
+         This project is licensed under the [LICENSE_NAME] - see the [LICENSE](mdc:LICENSE) file for details.
+         ```
+
+      2. CONTRIBUTING.md contains:
+         ```markdown
+         # Contributing Guidelines
+
+         ## Development Setup
+         [Development environment setup instructions]
+
+         ## Pull Request Process
+         1. Update documentation
+         2. Update tests
+         3. Follow code style
+         4. Get reviews
+
+         ## Code Style
+         [Code style guidelines]
+
+         ## Testing
+         [Testing requirements and instructions]
+         ```
+
+      3. LICENSE file:
+         - Choose appropriate license (MIT, Apache 2.0, etc.)
+         - Include current year
+         - Include copyright holder
+
+      4. CODE_OF_CONDUCT.md:
+         - Based on Contributor Covenant
+         - Include contact information
+         - Clear enforcement guidelines
+
+examples:
+  - input: |
+      # Bad: Missing required files
+      my-project/
+      ├── src/
+      └── README.md
+
+      # Good: Complete community project setup
+      my-project/
+      ├── src/
+      ├── README.md
+      ├── CONTRIBUTING.md
+      ├── LICENSE
+      └── CODE_OF_CONDUCT.md
+    output: "Properly configured community project"
+
+metadata:
+  priority: high
+  version: 1.0
+  tags:
+    - community
+    - documentation
+    - open-source
+</rule>

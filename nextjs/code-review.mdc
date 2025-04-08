@@ -1,0 +1,288 @@
+---
+description: Comprehensive checklist and guidelines for conducting code reviews
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Code Review Guidelines
+
+## Review Process
+- **Before Starting Review:**
+  - Check task requirements and acceptance criteria
+  - Review related tasks and dependencies
+  - Understand the context of the changes
+
+- **During Review:**
+  - Follow checklist systematically
+  - Document findings clearly
+  - Provide constructive feedback
+  - Reference specific rules when applicable
+
+- **After Review:**
+  - Verify fixes address all comments
+  - Check if changes require task updates
+  - Update documentation if needed
+
+## Review Checklist
+
+### Architecture & Structure
+```typescript
+// ✅ DO: Proper server action structure
+// app/actions/organization/create.ts
+'use server'
+import { createOrganization } from '@/lib/data/mutations/organizations'
+
+// ❌ DON'T: Mix concerns
+'use server'
+import { db } from '@/db'
+// Direct database operations in server action
+```
+
+- [ ] Next.js 15 app directory structure
+- [ ] Server actions in `app/actions/`
+- [ ] Database operations in `lib/data/{queries,mutations}/`
+- [ ] shadcn/ui component patterns
+- [ ] SOLID principles adherence
+- [ ] Clean data access patterns
+
+### Database & Data Layer
+```typescript
+// ✅ DO: Use Drizzle migrations
+// db/migrations/0001_initial.ts
+import { sql } from 'drizzle-orm'
+
+// ❌ DON'T: Manual SQL files
+// migrations/manual.sql
+CREATE TABLE users...
+```
+
+- [ ] Generated Drizzle migrations
+- [ ] Proper RLS policies
+- [ ] Edge function security
+- [ ] PostgreSQL style compliance
+- [ ] Type-safe database operations
+- [ ] Query optimization
+
+### Server Actions & API
+```typescript
+// ✅ DO: Proper server action
+export async function createUser(input: CreateUserInput) {
+  const result = await createUserMutation(input);
+  if (result.error) {
+    return { error: result.error };
+  }
+  return { data: result.data };
+}
+
+// ❌ DON'T: Skip validation/typing
+export async function createUser(formData: any) {
+  const user = await db.users.create(formData);
+  return user;
+}
+```
+
+- [ ] 'use server' directive present
+- [ ] Abstracted database operations
+- [ ] Comprehensive error handling
+- [ ] Zod schema validation
+- [ ] Proper async patterns
+- [ ] Appropriate response handling
+
+### Security
+```typescript
+// ✅ DO: Proper RLS policy
+CREATE POLICY "users can only access their own data"
+ON public.users
+FOR SELECT
+USING (auth.uid() = user_id);
+
+// ❌ DON'T: Skip RLS
+CREATE POLICY "allow all"
+ON public.users
+FOR ALL
+USING (true);
+```
+
+- [ ] RLS policy implementation
+- [ ] Client-side data security
+- [ ] Authentication checks
+- [ ] Secret management
+- [ ] Proper access scoping
+
+### Component Structure
+```typescript
+// ✅ DO: Proper component structure
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+
+export function CustomButton({ className, ...props }) {
+  return <Button className={cn('custom-class', className)} {...props} />
+}
+
+// ❌ DON'T: Skip component conventions
+export function CustomButton(props) {
+  return <button className="bg-blue-500" {...props} />
+}
+```
+
+- [ ] shadcn/ui consistency
+- [ ] Tailwind v4 practices
+- [ ] TypeScript typing
+- [ ] Client/server separation
+- [ ] Component abstraction
+
+### Naming Conventions
+```typescript
+// ✅ DO: Follow conventions
+// user-profile.tsx
+export function UserProfile() {}
+// useUserData.ts
+export function useUserData() {}
+// USER_ROLES.ts
+export const USER_ROLES = {}
+
+// ❌ DON'T: Mix conventions
+// UserData.tsx
+export function userData() {}
+```
+
+- [ ] kebab-case files
+- [ ] PascalCase components
+- [ ] camelCase functions
+- [ ] snake_case database
+- [ ] PascalCase types
+- [ ] UPPER_SNAKE_CASE constants
+
+### Error Handling
+```typescript
+// ✅ DO: Proper error handling
+try {
+  const result = await db.users.create(data)
+  return { data: result, error: null }
+} catch (error) {
+  console.error('Failed to create user:', error)
+  return { data: null, error: 'Failed to create user' }
+}
+
+// ❌ DON'T: Skip error handling
+const result = await db.users.create(data)
+return result
+```
+
+- [ ] Database error handling
+- [ ] User-facing errors
+- [ ] Error boundaries
+- [ ] Validation messages
+- [ ] Error logging
+
+### Type Safety
+```typescript
+// ✅ DO: Proper typing
+interface User {
+  id: string
+  name: string
+  email: string
+}
+
+export async function getUser(id: string): Promise<User | null> {
+  // Implementation
+}
+
+// ❌ DON'T: Use any
+export async function getUser(id: any): Promise<any> {
+  // Implementation
+}
+```
+
+- [ ] TypeScript strict mode
+- [ ] Function type definitions
+- [ ] Database type inference
+- [ ] Minimal any usage
+- [ ] Module type exports
+
+### Performance
+```typescript
+// ✅ DO: Optimize queries
+const users = await db
+  .select({ id: users.id, name: users.name })
+  .from(users)
+  .limit(10)
+
+// ❌ DON'T: Over-fetch
+const users = await db.select().from(users)
+```
+
+- [ ] Query optimization
+- [ ] React.cache() usage
+- [ ] Loading/error states
+- [ ] Image optimization
+- [ ] Bundle size management
+
+### Testing
+```typescript
+// ✅ DO: Proper testing
+describe('createUser', () => {
+  it('should create a user', async () => {
+    const input = { name: 'Test' }
+    const result = await createUser(input)
+    expect(result.data).toBeDefined()
+  })
+})
+
+// ❌ DON'T: Skip error cases
+describe('createUser', () => {
+  it('creates user', async () => {
+    expect(await createUser({})).toBeDefined()
+  })
+})
+```
+
+- [ ] Server action tests
+- [ ] Mocked database operations
+- [ ] Component testing
+- [ ] Integration tests
+- [ ] Error scenario tests
+
+### Documentation
+```typescript
+// ✅ DO: Proper documentation
+/**
+ * Creates a new user in the system
+ * @param {CreateUserInput} input - User creation input
+ * @returns {Promise<CreateUserResult>} Created user or error
+ */
+export async function createUser(input: CreateUserInput) {
+  // Implementation
+}
+
+// ❌ DON'T: Skip documentation
+export async function createUser(input) {
+  // Implementation
+}
+```
+
+- [ ] JSDoc comments
+- [ ] Function documentation
+- [ ] API documentation
+- [ ] Schema documentation
+- [ ] README updates
+
+## Review Response Guidelines
+
+### Providing Feedback
+- Be specific and reference rules
+- Explain why changes are needed
+- Provide examples when possible
+- Keep feedback constructive
+
+### Addressing Feedback
+- Acknowledge all comments
+- Explain complex changes
+- Update related documentation
+- Verify fixes with tests
+
+## References
+- [Next.js 15 Rules](mdc:.cursor/rules/nextjs-15.mdc)
+- [Data Access Rules](mdc:.cursor/rules/data-access.mdc)
+- [Server Actions Rules](mdc:.cursor/rules/server-actions.mdc)
+- [Naming Conventions](mdc:.cursor/rules/naming-conventions.mdc)

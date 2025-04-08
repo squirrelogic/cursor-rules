@@ -1,0 +1,256 @@
+---
+description: Guidelines for implementing data access through query and mutation modules
+globs: lib/data/**/*.ts
+alwaysApply: true
+---
+
+# Data Access Layer Structure
+
+## Overview
+Best practices for implementing data access through query and mutation modules. These modules serve as the single source of truth for database operations and should be used by server actions.
+
+- **File Organization**
+  ```
+  lib/data/
+  ├── mutations/
+  │   ├── organizations.ts
+  │   ├── users.ts
+  │   └── comments.ts
+  └── queries/
+      ├── organizations.ts
+      ├── users.ts
+      └── comments.ts
+  ```
+
+- **Query Module Structure**
+  - Place all read operations in `queries/` directory
+  - Name files after the primary entity they query
+  - Return consistent data structures
+  ```typescript
+  // ✅ DO: Consistent error handling and return types
+  import { organizations, organizationMembers } from '@/db/schema/organizations'
+  import { eq, or } from 'drizzle-orm'
+  import { createDrizzleSupabaseClient } from '@/db'
+
+  export async function getUserOrganization(userId: string) {
+    try {
+      const db = await createDrizzleSupabaseClient()
+      const orgs = await db.rls((tx) =>
+        tx
+          .select()
+          .from(organizations)
+          .innerJoin(organizationMembers, eq(organizations.id, organizationMembers.organization_id))
+          .where(or(eq(organizations.owner_id, userId), eq(organizationMembers.user_id, userId)))
+          .limit(1),
+      )
+      return { data: orgs[0] || null, error: null }
+    } catch (error) {
+      return {
+        data: null,
+        error: error instanceof Error ? error : new Error('Failed to fetch organization')
+      }
+    }
+  }
+  ```
+
+  ```typescript
+  // ❌ DON'T: Inconsistent error handling or return types
+  export async function getUserOrganization(userId: string) {
+    const db = await createDrizzleSupabaseClient()
+    const orgs = await db.rls((tx) =>
+      tx.select().from(organizations).where(eq(organizations.owner_id, userId))
+    )
+    return orgs[0] // ❌ No error handling, inconsistent return type
+  }
+  ```
+
+- **Mutation Module Structure**
+  - Place all write operations in `mutations/` directory
+  - Name files after the primary entity they modify
+  - Handle transactions and related updates
+  ```typescript
+  // ✅ DO: Handle transactions and related updates
+  import { organizations, organizationMembers } from '@/db/schema/organizations'
+  import { createDrizzleSupabaseClient } from '@/db'
+  import { eq } from 'drizzle-orm'
+
+  export async function createOrganization(name: string, logoUrl: string | null, ownerId: string) {
+    try {
+      const db = await createDrizzleSupabaseClient()
+      const org = await db.rls((tx) =>
+        tx
+          .insert(organizations)
+          .values({
+            name,
+            logo_url: logoUrl,
+            owner_id: ownerId,
+          })
+          .returning(),
+      )
+
+      // Related update in the same transaction
+      await db.rls((tx) =>
+        tx.insert(organizationMembers).values({
+          organization_id: org[0].id,
+          user_id: ownerId,
+          role: 'owner',
+        }),
+      )
+
+      return { data: org[0], error: null }
+    } catch (error) {
+      return {
+        data: null,
+        error: error instanceof Error ? error : new Error('Failed to create organization')
+      }
+    }
+  }
+  ```
+
+  ```typescript
+  // ❌ DON'T: Skip related updates or error handling
+  export async function createOrganization(name: string, ownerId: string) {
+    const db = await createDrizzleSupabaseClient()
+    return await db.rls((tx) =>
+      tx.insert(organizations).values({ name, owner_id: ownerId })
+    ) // ❌ Missing member creation, no error handling
+  }
+  ```
+
+- **Error Handling**
+  - Use consistent error return types
+  - Wrap all database operations in try-catch
+  - Return typed error objects
+  ```typescript
+  // ✅ DO: Consistent error handling
+  type QueryResult<T> = {
+    data: T | null;
+    error: Error | null;
+  }
+
+  export async function getOrganizationById(id: string): Promise<QueryResult<typeof organizations.$inferSelect>> {
+    try {
+      const db = await createDrizzleSupabaseClient()
+      const [org] = await db.rls((tx) =>
+        tx.select().from(organizations).where(eq(organizations.id, id)).limit(1)
+      )
+      return { data: org || null, error: null }
+    } catch (error) {
+      return {
+        data: null,
+        error: error instanceof Error ? error : new Error('Failed to fetch organization')
+      }
+    }
+  }
+  ```
+
+- **Type Safety**
+  - Use Drizzle's inferred types
+  - Define explicit return types for all functions
+  ```typescript
+  // ✅ DO: Use inferred types and type parameters
+  export async function updateOrganization(
+    id: string,
+    data: Partial<typeof organizations.$inferInsert>
+  ) {
+    try {
+      const db = await createDrizzleSupabaseClient()
+      const [org] = await db.rls((tx) =>
+        tx.update(organizations)
+          .set(data)
+          .where(eq(organizations.id, id))
+          .returning()
+      )
+      return { data: org, error: null }
+    } catch (error) {
+      return {
+        data: null,
+        error: error instanceof Error ? error : new Error('Failed to update organization')
+      }
+    }
+  }
+  ```
+
+- **Query Optimization**
+  - Use appropriate joins
+  - Select only needed columns
+  - Add proper where clauses
+  ```typescript
+  // ✅ DO: Optimize queries with joins and column selection
+  export async function getUserOrganizations() {
+    try {
+      const db = await createDrizzleSupabaseClient()
+      const result = await db.rls(async (tx) => {
+        return await tx
+          .select({
+            id: organizations.id,
+            name: organizations.name,
+            logo_url: organizations.logo_url,
+            created_at: organizations.created_at,
+            updated_at: organizations.updated_at,
+            owner_id: organizations.owner_id,
+            role: organizationMembers.role,
+          })
+          .from(organizations)
+          .innerJoin(
+            organizationMembers,
+            eq(organizations.id, organizationMembers.organization_id)
+          )
+      })
+      return result
+    } catch (error) {
+      console.error('Error fetching organizations:', error)
+      return []
+    }
+  }
+  ```
+
+- **Delete Operations**
+  - Return consistent response format
+  - Handle cascading deletes appropriately
+  ```typescript
+  // ✅ DO: Consistent delete operation structure
+  export async function deleteOrganization(id: string) {
+    try {
+      const db = await createDrizzleSupabaseClient()
+      await db.rls((tx) =>
+        tx.delete(organizations).where(eq(organizations.id, id))
+      )
+      return { error: null }
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error : new Error('Failed to delete organization')
+      }
+    }
+  }
+  ```
+
+## Best Practices Summary
+1. **Separation of Concerns**
+   - Queries handle read operations
+   - Mutations handle write operations
+   - Each file focuses on one entity type
+
+2. **Error Handling**
+   - Consistent error return types
+   - Descriptive error messages
+   - Proper error propagation
+
+3. **Type Safety**
+   - Use Drizzle's inferred types
+   - Define explicit return types
+   - Type all function parameters
+
+4. **Performance**
+   - Optimize database queries
+   - Use appropriate joins
+   - Select only needed columns
+
+5. **Transactions**
+   - Handle related updates together
+   - Maintain data consistency
+   - Proper error rollback
+
+## References
+- See also: [server-actions.mdc](mdc:.cursor/rules/server-actions.mdc) for using these modules in server actions
+- See also: [supabase-drizzle-bootstrap.mdc](mdc:.cursor/rules/supabase-drizzle-bootstrap.mdc) for Drizzle setup

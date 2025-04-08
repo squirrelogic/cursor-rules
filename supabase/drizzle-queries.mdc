@@ -1,0 +1,196 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Drizzle Query Patterns
+Guidelines for writing consistent and secure Drizzle ORM queries with RLS.
+
+## Overview
+This rule defines patterns for writing Drizzle ORM queries and mutations that respect Row Level Security (RLS) policies.
+
+<rule>
+name: drizzle_queries
+description: Guidelines for writing Drizzle ORM queries with RLS
+filters:
+  - type: file_extension
+    pattern: "\\.(ts|js)$"
+  - type: content
+    pattern: "drizzle-orm|createDrizzleSupabaseClient"
+
+actions:
+  - type: suggest
+    message: |
+      When writing Drizzle queries:
+
+      1. Query Structure:
+      ```typescript
+      // ✅ DO: Use simple, direct queries with RLS
+      export async function getItems() {
+        const db = await createDrizzleSupabaseClient()
+        const result = await db.rls(async (tx) => {
+          return await tx.select().from(items)
+        })
+        return result
+      }
+
+      // ❌ DON'T: Add unnecessary complexity or manual auth checks
+      export async function getItems() {
+        const supabase = await createClient() // ❌ Don't use Supabase client directly
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) throw new Error('Not authenticated')
+        // ... more unnecessary checks
+      }
+      ```
+
+      2. Mutations:
+      ```typescript
+      // ✅ DO: Return the mutated record when possible
+      export async function createItem(data: NewItem) {
+        const db = await createDrizzleSupabaseClient()
+        const result = await db.rls(async (tx) => {
+          const [item] = await tx.insert(items)
+            .values(data)
+            .returning()
+          return item
+        })
+        return result
+      }
+
+      // ❌ DON'T: Return void or boolean when you can return the record
+      export async function createItem(data: NewItem) {
+        const db = await createDrizzleSupabaseClient()
+        await db.rls(async (tx) => {
+          await tx.insert(items).values(data)
+        })
+        return true // ❌ Less useful than returning the record
+      }
+      ```
+
+      3. Type Safety:
+      ```typescript
+      // ✅ DO: Use schema types and type assertions
+      export async function updateItem(id: string, data: Partial<Item>) {
+        const db = await createDrizzleSupabaseClient()
+        const result = await db.rls(async (tx) => {
+          const [item] = await tx.update(items)
+            .set(data)
+            .where(eq(items.id, id))
+            .returning()
+          return item
+        })
+        return result
+      }
+
+      // ❌ DON'T: Use any or unknown types
+      export async function updateItem(id: string, data: any) {
+        // ...
+      }
+      ```
+
+      4. Single Record Queries:
+      ```typescript
+      // ✅ DO: Use limit(1) and array destructuring
+      export async function getItemById(id: string) {
+        const db = await createDrizzleSupabaseClient()
+        const result = await db.rls(async (tx) => {
+          const [item] = await tx.select()
+            .from(items)
+            .where(eq(items.id, id))
+            .limit(1)
+          return item
+        })
+        return result
+      }
+
+      // ❌ DON'T: Return array for single record queries
+      export async function getItemById(id: string) {
+        const db = await createDrizzleSupabaseClient()
+        const result = await db.rls(async (tx) => {
+          return await tx.select()
+            .from(items)
+            .where(eq(items.id, id))
+        })
+        return result[0] // ❌ Less explicit than using limit(1)
+      }
+      ```
+
+      5. Error Handling:
+      ```typescript
+      // ✅ DO: Let RLS handle authorization
+      export async function deleteItem(id: string) {
+        const db = await createDrizzleSupabaseClient()
+        await db.rls(async (tx) => {
+          await tx.delete(items)
+            .where(eq(items.id, id))
+        })
+        return true
+      }
+
+      // ❌ DON'T: Add manual auth checks
+      export async function deleteItem(id: string) {
+        const db = await createDrizzleSupabaseClient()
+        // ❌ Don't check auth manually, RLS handles this
+        const user = await getCurrentUser()
+        if (!user.canDelete) throw new Error('Not authorized')
+        // ...
+      }
+      ```
+
+      6. Query Organization:
+      - Keep queries in `lib/data/queries` directory
+      - Keep mutations in `lib/data/mutations` directory
+      - Name files after the primary table they operate on
+      - Export functions with clear, action-based names
+
+      7. Cache Invalidation:
+      ```typescript
+      // ✅ DO: Use revalidatePath after mutations when needed
+      export async function updateItem(id: string, data: Partial<Item>) {
+        const db = await createDrizzleSupabaseClient()
+        const result = await db.rls(async (tx) => {
+          const [item] = await tx.update(items)
+            .set(data)
+            .where(eq(items.id, id))
+            .returning()
+          return item
+        })
+        revalidatePath('/items') // Revalidate after mutation
+        return result
+      }
+      ```
+
+examples:
+  - input: |
+      // Bad: Manual auth checks and complex queries
+      export async function getItems() {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) throw new Error('Not authenticated')
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('organization_id')
+          .eq('id', user.id)
+          .single()
+        // ...more complexity
+      }
+
+      // Good: Simple query with RLS
+      export async function getItems() {
+        const db = await createDrizzleSupabaseClient()
+        const result = await db.rls(async (tx) => {
+          return await tx.select().from(items)
+        })
+        return result
+      }
+    output: "Properly structured Drizzle query with RLS"
+
+metadata:
+  priority: high
+  version: 1.0
+  tags:
+    - drizzle
+    - queries
+    - rls
+    - database
+</rule>

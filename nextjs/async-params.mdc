@@ -1,0 +1,125 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Async Params and SearchParams in Next.js 15
+<rule>
+name: async_params
+description: Guidelines for handling async params and searchParams in Next.js 15 page components
+filters:
+  - type: file_extension
+    pattern: ".tsx?$"
+  - type: path
+    pattern: "app/.*page.tsx$"
+
+actions:
+  - type: reject
+    conditions:
+      - pattern: "params\\s*:\\s*\\{\\s*[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*string\\s*\\}"
+        message: "Page params must be typed as a Promise and awaited"
+
+      - pattern: "searchParams\\s*:\\s*\\{[^}]*\\}"
+        message: "Page searchParams must be typed as a Promise and awaited"
+
+      - pattern: "const\\s+\\{\\s*[a-zA-Z_][a-zA-Z0-9_]*\\s*\\}\\s*=\\s*params"
+        message: "Page params must be awaited before destructuring"
+
+      - pattern: "const\\s+\\{\\s*[a-zA-Z_][a-zA-Z0-9_]*\\s*\\}\\s*=\\s*searchParams"
+        message: "Page searchParams must be awaited before destructuring"
+
+  - type: suggest
+    message: |
+      # Async Params and SearchParams
+
+      In Next.js 15, page components that use `params` or `searchParams` must:
+      1. Be async functions
+      2. Type params/searchParams as Promises
+      3. Await the params/searchParams before use
+
+      ## Params Example
+      ```typescript
+      // ✅ DO: Properly type and await params
+      interface PageProps {
+        params: Promise<{ slug: string }>
+      }
+
+      export default async function Page({ params }: PageProps) {
+        const { slug } = await params
+        return <div>Post: {slug}</div>
+      }
+
+      // ❌ DON'T: Use params without Promise type and await
+      interface PageProps {
+        params: { slug: string }  // Wrong! Should be Promise
+      }
+
+      export default function Page({ params }: PageProps) {
+        const { slug } = params   // Wrong! Should await params
+        return <div>Post: {slug}</div>
+      }
+      ```
+
+      ## SearchParams Example
+      ```typescript
+      // ✅ DO: Properly type and await searchParams
+      interface PageProps {
+        searchParams: Promise<{ q?: string }>
+      }
+
+      export default async function Page({ searchParams }: PageProps) {
+        const { q } = await searchParams
+        return <div>Search: {q}</div>
+      }
+
+      // ❌ DON'T: Use searchParams without Promise type and await
+      interface PageProps {
+        searchParams: { q?: string }  // Wrong! Should be Promise
+      }
+
+      export default function Page({ searchParams }: PageProps) {
+        const { q } = searchParams   // Wrong! Should await searchParams
+        return <div>Search: {q}</div>
+      }
+      ```
+
+      ## Best Practices
+      1. Always make page components async when using params/searchParams
+      2. Always type params/searchParams as Promises
+      3. Always await params/searchParams before destructuring
+      4. Consider handling loading states while params are being resolved
+      5. Use TypeScript for better type safety
+
+      ## Common Patterns
+      ```typescript
+      // Multiple params
+      interface PageProps {
+        params: Promise<{
+          slug: string
+          id: string
+        }>
+      }
+
+      // Both params and searchParams
+      interface PageProps {
+        params: Promise<{ slug: string }>
+        searchParams: Promise<{ page?: string }>
+      }
+
+      // With error handling
+      export default async function Page({ params }: PageProps) {
+        try {
+          const { slug } = await params
+          // Use slug
+        } catch (error) {
+          notFound()
+        }
+      }
+      ```
+
+metadata:
+  priority: high
+  version: 1.0
+  framework: next.js
+  frameworkVersion: "15.0.0"
+</rule>

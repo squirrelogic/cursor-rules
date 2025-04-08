@@ -1,0 +1,242 @@
+---
+description: Guidelines for setting up and using Drizzle ORM with Supabase PostgreSQL
+globs: *.ts, *.js
+alwaysApply: false
+---
+# Bootstrap Drizzle with Supabase
+
+## Overview
+Guidelines for setting up and using Drizzle ORM with Supabase PostgreSQL.
+
+<rule>
+name: supabase_drizzle_bootstrap
+description: Guidelines for setting up and using Drizzle ORM with Supabase PostgreSQL
+filters:
+  - type: file_extension
+    pattern: "\\.(ts|js)$"
+  - type: content
+    pattern: "drizzle-orm|@supabase/supabase-js"
+
+actions:
+  - type: suggest
+    message: |
+      When setting up Drizzle with Supabase:
+
+      1. Install required dependencies:
+      ```bash
+      npm install drizzle-orm pg @types/pg postgres jwt-decode
+      npm install -D drizzle-kit
+      ```
+
+      2. Create a drizzle config file (drizzle.config.ts):
+      ```typescript
+        import { config } from 'dotenv';
+        import { defineConfig } from 'drizzle-kit';
+
+        config({ path: '.env' });
+
+        export default defineConfig({
+        schema: './db/schema/index.ts',
+        out: './supabase/migrations',
+        dialect: 'postgresql',
+        dbCredentials: {
+            url: process.env.DATABASE_URL!,
+        },
+        });
+      ```
+
+      3. Schema files should be organized as:
+      ```
+      src/
+      └── db/
+          ├── schema/
+          │   ├── index.ts // exports all schema definitions.          
+          │   ├── auth.ts
+          │   ├── todos.ts
+          │   └── ...
+          ├── drizzle.ts
+          ├── index.ts
+          └── jwt.ts
+      ```
+
+      4. Example schema structure:
+      ```typescript
+      import { eq } from 'drizzle-orm'
+      import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+      import { authUid, authUsers, authenticatedRole } from 'drizzle-orm/supabase'
+
+      export const todos = pgTable('todos', {
+        id: uuid('id').defaultRandom().primaryKey(),
+        title: text('title').notNull(),
+        completed: boolean('completed').notNull().default(false),
+        created_at: timestamp('created_at').defaultNow().notNull(),
+        user_id: uuid('user_id').notNull().references(() => authUsers.id, { onDelete: "cascade" })
+      }, (table) => [
+
+        // Row Level Security is defined here
+        pgPolicy("users can insert their own todos", {
+            for: "insert",
+            to: authenticatedRole,
+            withCheck: eq(table.id, authUid)
+        }),
+        pgPolicy("users can update their own todos", {
+            for: "update",
+            to: authenticatedRole,
+            using: eq(table.id, authUid),
+            withCheck: eq(table.id, authUid),
+        }),
+      ])
+      ```
+
+      5. Database client setup:
+      ```typescript
+        import postgres from "postgres"
+        import { DrizzleConfig } from "drizzle-orm"
+        import { drizzle } from "drizzle-orm/postgres-js"
+
+        import { createClient } from "@/utils/supabase/server"
+
+        import { createDrizzle } from "./drizzle"
+        import * as schema from "./schema"
+        import { decode } from "./jwt"
+
+        const config = {
+            casing: "snake_case",
+            schema,
+        } satisfies DrizzleConfig<typeof schema>
+
+        // ByPass RLS
+        const admin = drizzle({
+            client: postgres(process.env.SUPABASE_DATABASE_URL!, { prepare: false }),
+            ...config,
+        })
+
+        // Protected by RLS
+        const client = drizzle({
+            client: postgres(process.env.SUPABASE_DATABASE_URL!, { prepare: false }),
+            ...config,
+        })
+
+        // https://github.com/orgs/supabase/discussions/23224
+        // Should be secure because we use the access token that is signed, and not the data read directly from the storage
+        export async function createDrizzleSupabaseClient() {
+            const {
+                data: { session },
+            } = await (await createClient()).auth.getSession()
+            return createDrizzle(decode(session?.access_token ?? ""), { admin, client })
+        }
+
+      ```
+
+      6. Add createDrizzle to drizzle.ts
+      ```typescript
+        import { sql } from "drizzle-orm"
+        import { PgDatabase } from "drizzle-orm/pg-core"
+
+        type SupabaseToken = {
+            iss?: string
+            sub?: string
+            aud?: string[] | string
+            exp?: number
+            nbf?: number
+            iat?: number
+            jti?: string
+            role?: string
+        }
+
+        export function createDrizzle<Database extends PgDatabase<any, any, any>,
+            Token extends SupabaseToken = SupabaseToken>(token: Token, { admin, client }: { admin: Database; client: Database }) 
+        {
+            return {
+                admin,
+                rls: (async (transaction, ...rest) => {
+                return await client.transaction(async (tx) => {
+                    // Supabase exposes auth.uid() and auth.jwt()
+                    // https://supabase.com/docs/guides/database/postgres/row-level-security#helper-functions
+                    try {
+                    await tx.execute(sql`
+                    -- auth.jwt()
+                    select set_config('request.jwt.claims', '${sql.raw(
+                        JSON.stringify(token)
+                    )}', TRUE);
+                    -- auth.uid()
+                    select set_config('request.jwt.claim.sub', '${sql.raw(
+                        token.sub ?? ""
+                    )}', TRUE);
+                    -- set local role
+                    set local role ${sql.raw(token.role ?? "anon")};
+                    `)
+                    return await transaction(tx)
+                    } finally {
+                    await tx.execute(sql`
+                        -- reset
+                        select set_config('request.jwt.claims', NULL, TRUE);
+                        select set_config('request.jwt.claim.sub', NULL, TRUE);
+                        reset role;
+                        `)
+                    }
+                }, ...rest)
+                }) as typeof client.transaction,
+            }
+        }
+      ```
+
+      7. Add jwt decode to jwt.ts:
+      ```typescript
+      import { jwtDecode, JwtPayload } from "jwt-decode"
+
+      export function decode(accessToken: string) {
+        try {
+            return jwtDecode<JwtPayload & { role: string }>(accessToken)
+        } catch (error) {
+            console.error(error)
+            return { role: "anon" } as JwtPayload & { role: string }
+        }
+      }
+      ```
+      8. Add migration scripts to package.json:
+      ```json
+      {
+        "scripts": {
+          "generate": "drizzle-kit generate:pg",
+          "migrate": "drizzle-kit push:pg"
+        }
+      }
+      ```
+
+
+      8. Best practices:
+      - Always use TypeScript for type safety
+      - Define explicit table relationships
+      - Use migrations for schema changes
+      - Enable RLS for all tables
+      - Use UUIDs for primary keys
+      - Include created_at/updated_at timestamps
+      - Add user_id foreign keys for RLS
+
+examples:
+  - input: |
+      // Bad: No type safety
+      const todos = pgTable('todos', {
+        id: serial('id'),
+        title: text('title')
+      })
+
+      // Good: Type-safe with proper structure
+      const todos = pgTable('todos', {
+        id: uuid('id').defaultRandom().primaryKey(),
+        title: text('title').notNull(),
+        user_id: uuid('user_id').notNull(),
+        created_at: timestamp('created_at').defaultNow().notNull()
+      })
+    output: "Properly structured Drizzle schema with types and RLS support"
+
+metadata:
+  priority: high
+  version: 1.0
+  tags:
+    - drizzle
+    - supabase
+    - database
+    - orm
+</rule>

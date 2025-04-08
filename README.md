@@ -16,12 +16,13 @@ This repository contains a set of rules that help maintain consistency and quali
 ## Rules
 
 1. **Conventional Commits** - Standards for commit message formatting
-2. **Conversation Style** - Guidelines for AI-human interaction in Cursor
-3. **Cursor Rules Location** - Standards for rule file placement
-4. **File Organization** - Guidelines for code organization
-5. **Git Commit Workflow** - Process for validating and committing changes
-6. **Naming Conventions** - Standards for naming files and code elements
-7. **SOLID Principles** - Implementation of SOLID design principles
+2. **Community Projects** - Standards for initializing and maintaining community-focused open source projects
+3. **Conversation Style** - Guidelines for AI-human interaction in Cursor
+4. **Cursor Rules Location** - Standards for rule file placement
+5. **File Organization** - Guidelines for code organization
+6. **Git Commit Workflow** - Process for validating and committing changes
+7. **Naming Conventions** - Standards for naming files and code elements
+8. **SOLID Principles** - Implementation of SOLID design principles
 
 ## Installation
 

@@ -1,0 +1,45 @@
+---
+description: Guidelines for generating and managing database migrations using drizzle-kit
+globs: ["db/migrations/*.sql"]
+alwaysApply: true
+---
+
+# Drizzle Migration Guidelines
+
+## Migration Generation
+- **ALWAYS use `npm run generate` to create migrations**
+  - Never create migration files manually
+  - This ensures consistent migration file naming and structure
+  - Drizzle-kit will automatically detect schema changes
+  - Example: `npm run generate` will execute drizzle-kit generate command
+
+## Migration Best Practices
+- **Review Generated Migrations**
+  ```sql
+  -- ✅ DO: Review and verify generated migrations
+  ALTER TABLE "customers" ADD COLUMN "status" text DEFAULT 'new_customer';
+
+  -- ❌ DON'T: Manually modify generated migration files
+  -- Let drizzle-kit handle the migration generation
+  ```
+
+- **Version Control**
+  - Commit migration files along with schema changes
+  - Never modify committed migrations
+  - Create new migrations for additional changes
+
+## Migration Commands
+- `npm run generate` - Generate new migrations
+- `npm run migrate` - Apply pending migrations
+- `npm run studio` - Open Drizzle Studio for database inspection
+
+## Migration Workflow
+1. Make changes to schema files in `db/schema/`
+2. Run `npm run generate` to create migration
+3. Review generated migration file
+4. Run `npm run migrate` to apply changes
+5. Commit both schema and migration files
+
+## References
+- [Drizzle Kit Documentation](mdc:https:/orm.drizzle.team/kit-docs/overview)
+- See also: [supabase-drizzle-bootstrap.mdc](mdc:.cursor/rules/supabase-drizzle-bootstrap.mdc)

@@ -1,0 +1,172 @@
+---
+description: Best practices and conventions for Next.js 15 applications
+globs: *.tsx, *.jsx
+alwaysApply: false
+---
+# Next.js 15 Best Practices
+<rule>
+name: nextjs_15
+description: Best practices and conventions for Next.js 15 applications
+filters:
+  - type: file_extension
+    pattern: ".tsx?$|.jsx?$"
+  - type: content
+    pattern: "(?s).*"
+
+actions:
+  # Folder Structure Rules
+  - type: reject
+    conditions:
+      - pattern: "^src/"
+        message: "Avoid using a src folder; structure your project as per Next.js 15 conventions."
+
+  - type: suggest
+    message: |
+      Ensure your Next.js 15 project follows this directory structure:
+      ```
+      app/
+      ├── actions/      # Server actions
+      ├── api/         # API routes
+      ├── auth/        # Authentication related pages
+      ├── login/       # Login page
+      └── signup/      # Signup page
+
+      components/
+      ├── auth/        # Authentication components
+      ├── layout/      # Layout components
+      └── ui/          # UI components (shadcn)
+
+      db/
+      └── schema/      # Drizzle schema files
+
+      lib/            # Libraries and utilities
+      public/         # Static assets
+      utils/          # Utility functions
+      ```
+
+  # General Best Practices
+  - type: reject
+    conditions:
+      - pattern: "import\s+.*\s+from\s+['\"]\.\./.*"
+        message: "Use absolute imports instead of relative imports. Configure paths in tsconfig.json"
+
+      - pattern: "use client['\"]\s*;?\s*export\s+default\s+function\s+Page"
+        message: "page.tsx files should not include 'use client'; they are server-only by default"
+
+      - pattern: "export\s+default\s+function\s+Page\s*\(\s*\{\s*params\s*\}\s*\)\s*\{"
+        message: "Pages with params or searchParams should be async functions"
+
+      - pattern: "<img\s+src="
+        message: "Use Next.js Image component for optimized images"
+
+  # Form Handling
+  - type: suggest
+    conditions:
+      - pattern: "<form"
+        message: |
+          Form best practices:
+          - Use react-hook-form for form handling
+          - Use Zod for form validation
+          - Handle form errors appropriately
+          - Submit to server actions
+          Example:
+          ```tsx
+          'use client';
+          import { useForm } from "react-hook-form";
+          import { zodResolver } from "@hookform/resolvers/zod";
+          import { z } from "zod";
+
+          const schema = z.object({
+            // your schema
+          });
+
+          export default function Form() {
+            const form = useForm({
+              resolver: zodResolver(schema)
+            });
+
+            return (
+              <form action={async (formData) => {
+                // server action
+              }}>
+                {/* form fields */}
+              </form>
+            );
+          }
+          ```
+
+  # Layout Rules
+  - type: reject
+    conditions:
+      - pattern: "export\s+default\s+function\s+\w+Layout\s*\(\s*\{\s*children\s*,\s*params\s*\}\s*\)\s*\{"
+        message: "Layouts with params should be async functions"
+
+  - type: suggest
+    conditions:
+      - pattern: "function\s+\w+Layout"
+        message: |
+          Layout best practices:
+          - RootLayout should be a standard function
+          - Layouts with params should be async
+          - Implement loading.tsx for Suspense
+          - Implement not-found.tsx for 404 errors
+
+  # Route Handler Rules
+  - type: reject
+    conditions:
+      - pattern: "export\s+function\s+(GET|POST|PUT|DELETE|PATCH)\s*\("
+        message: "Route handlers should be async functions"
+
+  - type: suggest
+    conditions:
+      - pattern: "route.ts$"
+        message: |
+          Route handler best practices:
+          ```typescript
+          import { NextResponse } from 'next/server';
+
+          export async function GET(
+            request: Request,
+            { params }: { params: { id: string } }
+          ) {
+            try {
+              // Your logic here
+              return NextResponse.json({ data });
+            } catch (error) {
+              return NextResponse.json(
+                { error: 'Error message' },
+                { status: 500 }
+              );
+            }
+          }
+          ```
+
+  # SEO and Performance
+  - type: suggest
+    conditions:
+      - pattern: "app/layout.tsx$"
+        message: |
+          SEO best practices:
+          - Implement metadata in layout.tsx
+          - Generate sitemap.ts
+          - Use generateStaticParams for static pages
+          - Implement robots.txt
+          Example:
+          ```typescript
+          import type { Metadata } from 'next';
+
+          export const metadata: Metadata = {
+            title: {
+              template: '%s | Your Site',
+              default: 'Your Site',
+            },
+            description: 'Your site description',
+          };
+          ```
+
+metadata:
+  priority: high
+  version: 1.0
+  framework: next.js
+  frameworkVersion: "15.0.0"
+</rule>

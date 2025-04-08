@@ -1,0 +1,253 @@
+---
+description: Guidelines for implementing server actions with direct database mutations and queries
+globs: app/actions/**/*.ts, app/actions/**/*.tsx
+alwaysApply: true
+---
+
+# Server Actions with Database Operations
+
+## Overview
+Best practices for implementing server actions that interact with the database through abstracted query and mutation modules.
+
+- **File Organization**
+  - Place all server actions in `app/actions/` directory
+  - Group related actions in subdirectories by feature
+  - Place database operations in separate query/mutation modules
+  ```
+  app/
+  ├── actions/
+  │   ├── auth/
+  │   │   ├── login.ts
+  │   │   └── register.ts
+  │   └── organization/
+  │       ├── create.ts
+  │       └── update.ts
+  lib/
+  ├── data/
+  │   ├── mutations/
+  │   │   └── organizations.ts
+  │   └── queries/
+  │       └── organizations.ts
+  ```
+
+- **Server Action Implementation**
+  - **Always use 'use server' directive**
+  - **Import mutations/queries from lib/data**
+    ```typescript
+    // ✅ DO: Use abstracted database operations
+    'use server';
+
+    import { createOrganization } from '@/lib/data/mutations/organizations';
+    import { getUserOrganizations } from '@/lib/data/queries/organizations';
+    import { redirect } from 'next/navigation';
+
+    export async function createUserOrganization(formData: FormData) {
+      const name = formData.get('name') as string;
+      const logoUrl = formData.get('logo_url') as string;
+
+      // Get user from auth if needed
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        return redirect('/login?error=No user found');
+      }
+
+      const { error } = await createOrganization(name, logoUrl, user.id);
+
+      if (error) {
+        return redirect('/login/organization?error=Could not create organization');
+      }
+
+      return redirect('/welcome');
+    }
+
+    export async function fetchUserOrganizations() {
+      const organizations = await getUserOrganizations();
+      return organizations;
+    }
+    ```
+
+    ```typescript
+    // ❌ DON'T: Mix database logic in server actions
+    'use server';
+
+    import { createDrizzleSupabaseClient } from '@/db';
+    import { organizations } from '@/db/schema';
+
+    export async function createUserOrganization(formData: FormData) {
+      const db = await createDrizzleSupabaseClient();
+      await db.rls(async (tx) => {
+        await tx.insert(organizations).values({
+          name: formData.get('name') as string,
+          logo_url: formData.get('logo_url') as string,
+        });
+      });
+    }
+    ```
+
+- **Query/Mutation Module Structure**
+  ```typescript
+  // ✅ DO: lib/data/mutations/organizations.ts
+  import { createDrizzleSupabaseClient } from '@/db';
+  import { organizations } from '@/db/schema';
+  import { eq } from 'drizzle-orm';
+
+  export async function createOrganization(name: string, logoUrl: string, userId: string) {
+    const db = await createDrizzleSupabaseClient();
+
+    try {
+      await db.rls(async (tx) => {
+        await tx.insert(organizations).values({
+          name,
+          logo_url: logoUrl,
+          user_id: userId,
+        });
+      });
+      return { error: null };
+    } catch (error) {
+      console.error('Failed to create organization:', error);
+      return { error };
+    }
+  }
+  ```
+
+  ```typescript
+  // ✅ DO: lib/data/queries/organizations.ts
+  import { createDrizzleSupabaseClient } from '@/db';
+  import { organizations } from '@/db/schema';
+  import { cache } from 'react';
+
+  export const getUserOrganizations = cache(async () => {
+    const db = await createDrizzleSupabaseClient();
+
+    return await db.rls(async (tx) => {
+      return await tx.query.organizations.findMany({
+        columns: {
+          id: true,
+          name: true,
+          logo_url: true,
+        },
+        orderBy: (orgs, { desc }) => [desc(orgs.created_at)],
+      });
+    });
+  });
+  ```
+
+- **Error Handling**
+  - Handle database errors in mutation/query modules
+  - Handle UI/redirect logic in server actions
+  ```typescript
+  // ✅ DO: Separate error handling concerns
+  // lib/data/mutations/organizations.ts
+  export async function updateOrganization(id: string, data: UpdateOrganizationInput) {
+    const db = await createDrizzleSupabaseClient();
+
+    try {
+      await db.rls(async (tx) => {
+        await tx.update(organizations)
+          .set(data)
+          .where(eq(organizations.id, id));
+      });
+      return { error: null };
+    } catch (error) {
+      console.error('Failed to update organization:', error);
+      return { error };
+    }
+  }
+
+  // app/actions/organization/update.ts
+  export async function updateUserOrganization(formData: FormData) {
+    const { error } = await updateOrganization(
+      formData.get('id') as string,
+      {
+        name: formData.get('name') as string,
+        logo_url: formData.get('logo_url') as string,
+      }
+    );
+
+    if (error) {
+      return redirect('/organization?error=Could not update organization');
+    }
+
+    return redirect('/organization?success=Organization updated');
+  }
+  ```
+
+- **Data Validation**
+  - Define validation schemas in separate files
+  - Validate in mutation modules before database operations
+  ```typescript
+  // ✅ DO: lib/validations/organization.ts
+  import { z } from 'zod';
+
+  export const organizationSchema = z.object({
+    name: z.string().min(1).max(100),
+    logo_url: z.string().url().optional(),
+  });
+
+  // lib/data/mutations/organizations.ts
+  import { organizationSchema } from '@/lib/validations/organization';
+
+  export async function createOrganization(name: string, logoUrl: string, userId: string) {
+    const result = organizationSchema.safeParse({ name, logo_url: logoUrl });
+
+    if (!result.success) {
+      return { error: { message: 'Invalid input', details: result.error.format() } };
+    }
+
+    // Database operations...
+  }
+  ```
+
+- **Type Safety**
+  - Define types for mutation/query inputs and outputs
+  - Use Drizzle's generated types
+  ```typescript
+  // ✅ DO: lib/types/organization.ts
+  import { type Organization } from '@/db/schema';
+
+  export type CreateOrganizationInput = Pick<Organization, 'name' | 'logo_url'>;
+  export type UpdateOrganizationInput = Partial<CreateOrganizationInput>;
+
+  // lib/data/mutations/organizations.ts
+  import { type CreateOrganizationInput } from '@/lib/types/organization';
+
+  export async function createOrganization(input: CreateOrganizationInput, userId: string) {
+    // Implementation...
+  }
+  ```
+
+- **Testing**
+  - Test mutation/query modules independently
+  - Test server actions with mocked mutation/query functions
+  ```typescript
+  // ✅ DO: Test separation of concerns
+  import { describe, it, expect, vi } from 'vitest';
+  import { createUserOrganization } from './organization';
+  import { createOrganization } from '@/lib/data/mutations/organizations';
+
+  vi.mock('@/lib/data/mutations/organizations', () => ({
+    createOrganization: vi.fn(),
+  }));
+
+  describe('createUserOrganization', () => {
+    it('should create an organization', async () => {
+      vi.mocked(createOrganization).mockResolvedValue({ error: null });
+
+      const formData = new FormData();
+      formData.append('name', 'Test Org');
+      formData.append('logo_url', 'https://example.com/logo.png');
+
+      const result = await createUserOrganization(formData);
+      expect(result).toBeDefined();
+    });
+  });
+  ```
+
+## References
+- [Next.js Server Actions](mdc:https:/nextjs.org/docs/app/api-reference/functions/server-actions)
+- [Drizzle ORM Documentation](mdc:https:/orm.drizzle.team/docs/overview)
+- See also: [nextjs-15.mdc](mdc:.cursor/rules/nextjs-15.mdc) for general Next.js conventions
+- See also: [supabase-drizzle-bootstrap.mdc](mdc:.cursor/rules/supabase-drizzle-bootstrap.mdc) for Drizzle setup
